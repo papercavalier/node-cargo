@@ -1,40 +1,58 @@
 #!/usr/bin/env node
-var io    = require('socket.io').listen(8080)
-  , scale = require('dymo-scale')
-  , exec  = require('child_process').exec
-  , fs    = require('fs');
 
-io.sockets.on('connection', function(socket) {
-  var poll;
+const http = require('http');
+const { Server } = require('socket.io');
+const scale = require('dymo-scale');
+const exec = require('child_process').exec;
+const fs = require('fs');
 
-  (poll = function() {
-    scale.read(function(err, data) {
-      if(err) {
-        return setTimeout(poll, 2000);
-      }
+// Create HTTP server
+const server = http.createServer();
 
-      socket.emit('scale', data.value);
-      return setTimeout(poll, 100);
-    });
-  })();
+// Attach Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: "*"
+  }
+});
 
-  socket.on('disconnect', function () {
-    clearTimeout(poll);
-    poll = () => null;
+// Start listening
+server.listen(8080, () => {
+  console.log('node-cargo listening on http://localhost:8080');
+});
+
+io.on('connection', (socket) => {
+  console.log('Client connected');
+
+  let poll;
+
+  const startPolling = () => {
+    poll = setTimeout(function readScale() {
+      scale.read((err, data) => {
+        if (!err && data) {
+          socket.emit('scale', data.value);
+        }
+        poll = setTimeout(readScale, err ? 2000 : 100);
+      });
+    }, 0);
+  };
+
+  startPolling();
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+    if (poll) clearTimeout(poll);
   });
 
-  socket.on('printer', function(data) {
-    var path = '/tmp/' + new Date().getTime();
+  socket.on('printer', (data) => {
+    const path = '/tmp/' + Date.now();
+    const binaryData = Buffer.from(data, 'base64');
 
-    binaryData = new Buffer(data, 'base64');
+    fs.writeFile(path, binaryData, (err) => {
+      if (err) return;
 
-    fs.writeFile(path, binaryData, function(err) {
-      if(err) return;
-
-      console.log ('lpr -l ' + path)
-
-      exec('lpr -l ' + path, function() {
-        fs.unlink(path);
+      exec(`lpr -l ${path}`, () => {
+        fs.unlink(path, () => {});
       });
     });
   });

@@ -1,27 +1,19 @@
 {
   "name": "node-cargo",
   "description": "The Node.js Cargo app",
-  "version": "0.0.1",
-  "maintainers": [
-    {
-      "name": "Paper Cavalier",
-      "email": "code@papercavalier.com",
-      "web": "http://papercavalier.com"
-    }
-  ],
-  "contributors": [],
-  "licenses": {},
+  "version": "0.1.0",
+  "private": true,
   "dependencies": {
-    "socket.io": "0.9.x",
-    "dymo-scale": "0.1.x"
+    "dymo-scale": "file:../node-dymo-scale",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.8.3"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/netguru/node-cargo"
+    "url": "https://github.com/papercavalier/node-cargo"
   },
-  "homepage": "",
   "engines": {
-    "node": ">= 0.8.0"
+    "node": ">= 20"
   },
   "directories": {
     "bin": "bin"
