@@ -1,58 +1,69 @@
 #!/usr/bin/env node
 
-const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const { Server } = require('socket.io');
 const scale = require('dymo-scale');
-const exec = require('child_process').exec;
-const fs = require('fs');
+const { exec } = require('child_process');
 
-// Create HTTP server
-const server = http.createServer();
+// --- TLS config ---
+const tlsOptions = {
+  key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost-key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost.pem'))
+};
 
-// Attach Socket.IO
+// --- HTTPS server ---
+const server = https.createServer(tlsOptions);
+
+// --- Socket.IO ---
 const io = new Server(server, {
   cors: {
-    origin: "*"
+    origin: "*", // we will tighten this later
   }
 });
 
-// Start listening
+// --- Start server ---
 server.listen(8080, () => {
-  console.log('node-cargo listening on http://localhost:8080');
+  console.log('node-cargo listening on https://localhost:8080');
 });
 
+// --- Socket handling ---
 io.on('connection', (socket) => {
   console.log('Client connected');
 
-  let poll;
+  let pollTimeout = null;
 
-  const startPolling = () => {
-    poll = setTimeout(function readScale() {
-      scale.read((err, data) => {
-        if (!err && data) {
-          socket.emit('scale', data.value);
-        }
-        poll = setTimeout(readScale, err ? 2000 : 100);
-      });
-    }, 0);
+  const readScale = () => {
+    scale.read((err, data) => {
+      if (!err && data) {
+        socket.emit('scale', data.value);
+      }
+
+      pollTimeout = setTimeout(
+        readScale,
+        err ? 2000 : 100
+      );
+    });
   };
 
-  startPolling();
+  // start polling immediately
+  readScale();
 
   socket.on('disconnect', () => {
     console.log('Client disconnected');
-    if (poll) clearTimeout(poll);
+    if (pollTimeout) clearTimeout(pollTimeout);
   });
 
   socket.on('printer', (data) => {
-    const path = '/tmp/' + Date.now();
+    const tmpPath = `/tmp/${Date.now()}`;
     const binaryData = Buffer.from(data, 'base64');
 
-    fs.writeFile(path, binaryData, (err) => {
+    fs.writeFile(tmpPath, binaryData, (err) => {
       if (err) return;
 
-      exec(`lpr -l ${path}`, () => {
-        fs.unlink(path, () => {});
+      exec(`lpr -l ${tmpPath}`, () => {
+        fs.unlink(tmpPath, () => {});
       });
     });
   });
