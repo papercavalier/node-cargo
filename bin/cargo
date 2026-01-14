@@ -9,45 +9,35 @@ const { exec } = require('child_process');
 
 // --- TLS config ---
 const tlsOptions = {
-  key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost-key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost.pem')),
+  key: fs.readFileSync(
+    path.join(__dirname, '..', 'certs', 'cargo-local-key.pem')
+  ),
+  cert: fs.readFileSync(
+    path.join(__dirname, '..', 'certs', 'cargo-local.pem')
+  ),
 };
 
-// --- HTTPS server with PNA + CORS headers ---
-const server = https.createServer(tlsOptions, (req, res) => {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
-
-  // 🔑 REQUIRED for Chrome Private Network Access
-  res.setHeader('Access-Control-Allow-Private-Network', 'true');
-
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    return res.end();
-  }
-});
+// --- HTTPS server ---
+const server = https.createServer(tlsOptions);
 
 // --- Socket.IO ---
 const io = new Server(server, {
   cors: {
-    origin: '*', // OK for now
-    methods: ['GET', 'POST'],
+    origin: true, // reflect requesting origin
+    credentials: true,
   },
 });
 
 // --- Start server ---
-server.listen(8080, () => {
-  console.log('node-cargo listening on https://localhost:8080');
+server.listen(8080, '0.0.0.0', () => {
+  console.log('node-cargo listening on https://cargo-local.test:8080');
 });
 
 // --- Socket handling ---
 io.on('connection', (socket) => {
   console.log('Client connected');
 
-  let pollTimeout = null;
+  let pollTimeout;
 
   const readScale = () => {
     scale.read((err, data) => {
@@ -62,7 +52,6 @@ io.on('connection', (socket) => {
     });
   };
 
-  // Start polling immediately
   readScale();
 
   socket.on('disconnect', () => {
