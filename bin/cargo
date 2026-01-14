@@ -20,10 +20,11 @@ const tlsOptions = {
 // --- HTTPS server ---
 const server = https.createServer(tlsOptions);
 
-// --- Socket.IO ---
+// --- Socket.IO (WebSocket ONLY) ---
 const io = new Server(server, {
+  transports: ['websocket'], // 🚨 CRITICAL
   cors: {
-    origin: true, // reflect requesting origin
+    origin: true,            // allow cargo.papercavalier.com
     credentials: true,
   },
 });
@@ -35,9 +36,9 @@ server.listen(8080, '0.0.0.0', () => {
 
 // --- Socket handling ---
 io.on('connection', (socket) => {
-  console.log('Client connected');
+  console.log('Client connected via websocket');
 
-  let pollTimeout;
+  let pollTimeout = null;
 
   const readScale = () => {
     scale.read((err, data) => {
