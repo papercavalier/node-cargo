@@ -1,74 +1,58 @@
 #!/usr/bin/env node
 
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+const http = require('http');
 const { Server } = require('socket.io');
 const scale = require('dymo-scale');
-const { exec } = require('child_process');
+const exec = require('child_process').exec;
+const fs = require('fs');
 
-// --- TLS config ---
-const tlsOptions = {
-  key: fs.readFileSync(
-    path.join(__dirname, '..', 'certs', 'cargo-local-key.pem')
-  ),
-  cert: fs.readFileSync(
-    path.join(__dirname, '..', 'certs', 'cargo-local.pem')
-  ),
-};
+// Create HTTP server
+const server = http.createServer();
 
-// --- HTTPS server ---
-const server = https.createServer(tlsOptions);
-
-// --- Socket.IO (WebSocket ONLY) ---
+// Attach Socket.IO
 const io = new Server(server, {
-  transports: ['websocket'], // 🚨 CRITICAL
   cors: {
-    origin: true,            // allow cargo.papercavalier.com
-    credentials: true,
-  },
+    origin: "*"
+  }
 });
 
-// --- Start server ---
-server.listen(8080, '0.0.0.0', () => {
-  console.log('node-cargo listening on https://cargo-local.test:8080');
+// Start listening
+server.listen(8080, () => {
+  console.log('node-cargo listening on http://localhost:8080');
 });
 
-// --- Socket handling ---
 io.on('connection', (socket) => {
-  console.log('Client connected via websocket');
+  console.log('Client connected');
 
-  let pollTimeout = null;
+  let poll;
 
-  const readScale = () => {
-    scale.read((err, data) => {
-      if (!err && data) {
-        socket.emit('scale', data.value);
-      }
-
-      pollTimeout = setTimeout(
-        readScale,
-        err ? 2000 : 100
-      );
-    });
+  const startPolling = () => {
+    poll = setTimeout(function readScale() {
+      scale.read((err, data) => {
+        if (!err && data) {
+          socket.emit('scale', data.value);
+        }
+        poll = setTimeout(readScale, err ? 2000 : 100);
+      });
+    }, 0);
   };
 
-  readScale();
+  startPolling();
 
   socket.on('disconnect', () => {
     console.log('Client disconnected');
-    if (pollTimeout) clearTimeout(pollTimeout);
+    if (poll) clearTimeout(poll);
   });
 
   socket.on('printer', (data) => {
-    const tmpPath = `/tmp/${Date.now()}`;
+    const path = '/tmp/' + Date.now();
     const binaryData = Buffer.from(data, 'base64');
 
-    fs.writeFile(tmpPath, binaryData, (err) => {
+    fs.writeFile(path, binaryData, (err) => {
       if (err) return;
 
-      exec(`lpr -l ${tmpPath}`, () => {
-        fs.unlink(tmpPath, () => {});
+      exec(`lpr -l ${path}`, () => {
+        fs.unlink(path, () => {});
       });
     });
   });
