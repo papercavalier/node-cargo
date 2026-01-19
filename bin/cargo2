@@ -1,0 +1,68 @@
+#!/usr/bin/env node
+
+const http = require('http');
+const { Server } = require('socket.io');
+const scale = require('dymo-scale');
+const fs = require('fs');
+const { exec } = require('child_process');
+
+// --- HTTP server ---
+const server = http.createServer();
+
+// --- Socket.IO (v4) ---
+const io = new Server(server, {
+  cors: {
+    origin: true,      // reflect origin
+    credentials: true
+  },
+  transports: ['websocket'] // IMPORTANT: disable polling
+});
+
+// --- Start server ---
+server.listen(8080, '0.0.0.0', () => {
+  console.log('node-cargo listening on http://localhost:8080');
+});
+
+// --- Socket handling ---
+io.on('connection', (socket) => {
+  console.log('Client connected');
+
+  let timer = null;
+  let stopped = false;
+
+  const readScale = () => {
+    if (stopped) return;
+
+    scale.read((err, data) => {
+      if (!err && data) {
+        socket.emit('scale', data.value);
+      }
+
+      timer = setTimeout(
+        readScale,
+        err ? 2000 : 100
+      );
+    });
+  };
+
+  readScale();
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  });
+
+  socket.on('printer', (data) => {
+    const path = `/tmp/${Date.now()}`;
+    const binaryData = Buffer.from(data, 'base64');
+
+    fs.writeFile(path, binaryData, (err) => {
+      if (err) return;
+
+      exec(`lpr -l ${path}`, () => {
+        fs.unlink(path, () => {});
+      });
+    });
+  });
+});
